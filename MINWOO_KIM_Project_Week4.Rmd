@@ -1,0 +1,132 @@
+---
+title: "Practical Machine Learning Project"
+author: "Min Woo Tommy Kim"
+date: "13/07/2020"
+output: html_document
+---
+
+```{r, include=FALSE}
+
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(RColorBrewer)
+library(randomForest)
+library(gbm)
+
+memory.size()
+memory.limit()
+memory.limit(100000)
+memory.size()
+memory.limit()
+
+```
+
+[Data]
+Importing Datasets
+
+```{r}
+##Importing Datasets
+
+Train_Data <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+dim(Train_Data)
+
+Test_Data <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+dim(Test_Data)
+```
+
+[Data Adjustment]
+Adjusting Data to eliminate the columns those are having NA and values close to 0
+```{r}
+
+Train_Data_Adj <- Train_Data[, -nearZeroVar(Train_Data)]
+dim(Train_Data_Adj)
+
+Test_Data_Adj <- Test_Data[, -nearZeroVar(Train_Data)]
+dim(Test_Data_Adj)
+
+Train_Data_Adj_Final <- Train_Data_Adj[, colSums(is.na(Train_Data_Adj)) == FALSE]
+dim(Train_Data_Adj_Final)
+
+Test_Data_Adj_Final <- Test_Data_Adj[, colSums(is.na(Train_Data_Adj)) == FALSE]
+dim(Test_Data_Adj_Final)
+
+```
+
+[Data Adjustment]
+Removing Columns with Unique Identifier & those are not numeric
+```{r}
+Train_Data_Final <-Train_Data_Adj_Final[, 7:59]
+dim(Train_Data_Final)
+Test_Data_Final <-Test_Data_Adj_Final[, 7:59]
+dim(Test_Data_Final)
+```
+
+Splitting Train_Data_Final into 'training' (70%) and 'testing' (30%)
+```{r}
+inTrain <- createDataPartition(Train_Data_Final$classe, p=0.7, list=FALSE)
+training <-Train_Data_Final[inTrain,]
+dim(training)
+testing <- Train_Data_Final[-inTrain,]
+dim(testing)
+```
+
+[Modeling] Decision Tree
+```{r}
+set.seed(323)
+Model_DT <- train(classe ~. , data=training, method= "rpart")
+fancyRpartPlot(Model_DT$finalModel)
+
+Predict_DT <- predict(Model_DT, testing)
+DT_Result <- confusionMatrix(Predict_DT, testing$classe)
+DT_Result
+```
+
+[Modeling] Generalized Boosted Regression Model
+```{r}
+set.seed(323)
+Model_GBM <- train(classe ~. , data=training, method= "gbm", verbose = FALSE)
+Model_GBM$finalModel
+print(Model_GBM)
+
+Predict_GBM <- predict(Model_GBM, testing)
+GBM_Result <- confusionMatrix(Predict_GBM, testing$classe)
+GBM_Result
+```
+
+Configuring parallel processing
+```{r}
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+```
+
+Configuring trainControl object
+```{r}
+fitControl <- trainControl(method = "cv", number = 5, allowParallel = TRUE)
+memory.limit(100000)
+```
+
+[Modeling] Random Forest
+```{r}
+set.seed(323)
+Model_RF <- train(classe ~. , data=training, method= "rf", trControl = fitControl)
+Model_RF$finalModel
+
+Predict_RF <- predict(Model_RF, testing)
+RF_Result <- confusionMatrix(Predict_RF, testing$classe)
+RF_Result
+```
+
+De-registering parallel processing cluster
+```{r}
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+Conducting final prediction by using Random Forest model, which has the highest accuracy among the models
+```{r}
+predict(Model_RF, Test_Data_Final)
+```
